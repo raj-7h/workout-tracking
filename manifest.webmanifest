@@ -1,0 +1,9 @@
+{
+  "name": "Repday Workout Log",
+  "short_name": "Repday",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f5f6f0",
+  "theme_color": "#f5f6f0",
+  "icons": []
+}
