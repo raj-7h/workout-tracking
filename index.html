@@ -8,7 +8,6 @@
 <link rel="manifest" href="manifest.webmanifest">
 <title>Repday — workout log</title>
 <link rel="stylesheet" href="styles.css">
-<script src="https://accounts.google.com/gsi/client"></script>
 <script defer src="drive-sync.js"></script>
 <script defer src="app.js"></script>
 </head>
@@ -17,10 +16,10 @@
   <header class="topbar"><a class="brand" href="#"><span class="brand-mark">↗</span>repday</a><span class="today-chip"><i></i>YOUR TRAINING JOURNAL</span></header>
   <main>
     <section class="intro"><div><div class="overline">YOUR TRAINING JOURNAL</div><h1 id="greeting">Your workout log</h1><p>Build a routine, track every set, and keep getting stronger.</p></div></section>
-    <section class="drive-card" aria-label="Google Drive sync"><div class="drive-copy"><b>Google Drive sync</b><small id="driveStatus">Saved on this device. Connect Drive to sync across devices.</small></div><div class="drive-controls"><input id="driveClientId" type="text" autocomplete="off" placeholder="Google OAuth web client ID" aria-label="Google OAuth web client ID"><button class="btn" id="driveConnect">Connect &amp; sync</button><button class="btn subtle" id="driveSync" hidden>Sync now</button><button class="btn subtle" id="exportData">Export backup</button><label class="btn subtle import-label">Import backup<input id="importData" type="file" accept="application/json,.json"></label></div></section>
+    <section class="drive-card" id="driveCard" aria-label="Google Drive sync"><div class="drive-copy"><b>Google Drive sync</b><small id="driveStatus">Sign in once on this device. Drive changes upload when you complete a day.</small></div><div class="drive-controls"><button class="btn" id="driveConnect">Enable Drive sync</button><button class="btn subtle" id="exportData">Export backup</button><label class="btn subtle import-label">Import backup<input id="importData" type="file" accept="application/json,.json"></label></div></section>
     <section class="week-bar"><button class="icon-btn" id="prevWeek" aria-label="Previous week">‹</button><div class="week-caption"><b id="monthLabel"></b><small id="weekLabel"></small></div><button class="icon-btn" id="nextWeek" aria-label="Next week">›</button></section>
     <section class="week-grid" id="week"></section>
-    <section class="workout-head"><div><div class="overline">YOUR SESSION</div><h2 id="workoutTitle"></h2><p id="workoutSub"></p></div><button class="btn" id="toggleForm">＋ Add exercise</button></section>
+    <section class="workout-head"><div><div class="overline">YOUR SESSION</div><h2 id="workoutTitle"></h2><p id="workoutSub"></p><small class="save-hint">Edits save on this device. Complete the day to upload all changes.</small></div><div class="workout-actions"><button class="btn subtle" id="completeDay">Complete this day</button><button class="btn" id="toggleForm">＋ Add exercise</button></div></section>
     <form id="exerciseForm" class="exercise-form" hidden>
       <div class="form-title">Add exercise to <b id="formDay"></b></div>
       <div class="form-grid">
@@ -38,7 +37,7 @@
     <section id="exerciseList" class="exercise-list"></section>
     <section class="progress-card" id="progress"><div class="chart-heading"><div><h2>Strength over time</h2><p>Best set weight for each exercise</p></div><select id="chartExercise" aria-label="Choose exercise for chart"></select></div><div id="chart" class="chart"></div><div class="chart-axis"><span>EARLIER</span><span>RECENT</span></div></section>
     <section class="stats"><div><small>Sessions logged</small><b id="sessions">0</b></div><div><small>Total sets</small><b id="totalSets">0</b></div><div><small>Best lift</small><b id="bestLift">—</b></div></section>
-    <footer>Workout records save on this device. Connect Drive above to sync a copy across devices.</footer>
+    <footer>Workout records save on this device. Press Complete this day to update your Google Drive backup.</footer>
   </main>
 </div>
 <div id="toast" class="toast"></div>

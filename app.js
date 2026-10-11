@@ -17,7 +17,7 @@ let selected = today, weekOffset = 0, chartExercise = '';
 
 function save(sync = true) {
   const now = Date.now(); db.updatedAt = now;
-  if (db.days[selected]) db.days[selected].updatedAt = now;
+  if (db.days[selected]) { db.days[selected].updatedAt = now; delete db.days[selected].completedAt; $('#completeDay').textContent = 'Complete this day'; }
   localStorage.setItem('repday-v1', JSON.stringify(db));
   if (sync) window.RepdayDrive?.queue(db);
 }
@@ -79,6 +79,7 @@ function render() {
   $('#workoutTitle').textContent = `${nameOfDay(date)} workout`;
   $('#workoutSub').textContent = date.toLocaleDateString('en', { month: 'long', day: 'numeric', year: 'numeric' });
   $('#formDay').textContent = nameOfDay(date);
+  $('#completeDay').textContent = data.completedAt ? 'Completed · sync again' : 'Complete this day';
   const list = $('#exerciseList'); list.replaceChildren();
   if (!data.exercises.length) { list.innerHTML = '<div class="empty"><b>A fresh page.</b>Add an exercise to start this day’s workout.</div>'; }
   data.exercises.forEach((exercise, index) => {
@@ -146,6 +147,16 @@ function toast(message) { const node = $('#toast'); node.textContent = message; 
 $('#prevWeek').onclick = () => { weekOffset--; const date = fromISO(selected); date.setDate(date.getDate() - 7); selected = toISO(date); render(); };
 $('#nextWeek').onclick = () => { weekOffset++; const date = fromISO(selected); date.setDate(date.getDate() + 7); selected = toISO(date); render(); };
 $('#toggleForm').onclick = () => { const form = $('#exerciseForm'); form.hidden = !form.hidden; $('#formDay').textContent = nameOfDay(fromISO(selected)); if (!form.hidden) $('#nameInput').focus(); };
+$('#completeDay').onclick = async () => {
+  const day = dayData(), timestamp = Date.now();
+  day.completedAt = timestamp; day.updatedAt = timestamp; db.updatedAt = timestamp;
+  localStorage.setItem('repday-v1', JSON.stringify(db));
+  const button = $('#completeDay'); button.disabled = true; button.textContent = 'Saving to Drive…';
+  const synced = await window.RepdayDrive?.syncNow();
+  button.disabled = false;
+  if (synced) { toast('Day completed and saved to Drive'); render(); }
+  else { button.textContent = 'Retry Drive save'; toast('Day saved here; Drive update failed'); }
+};
 $('#exerciseForm').onsubmit = async (event) => {
   event.preventDefault(); const name = $('#nameInput').value.trim(); if (!name) return;
   let photo = ''; try { if ($('#photoInput').files[0]) photo = await imageData($('#photoInput').files[0]); } catch { return toast('Choose a valid image'); }
@@ -154,7 +165,6 @@ $('#exerciseForm').onsubmit = async (event) => {
   syncTemplate(); save(); event.target.reset(); $('#setsInput').value = 3; $('#repsInput').value = 8; $('#weightInput').value = 0; event.target.hidden = true; render(); toast('Exercise added');
 };
 $('#driveConnect').onclick = () => window.RepdayDrive?.connect();
-$('#driveSync').onclick = () => window.RepdayDrive?.syncNow();
 $('#exportData').onclick = () => {
   const blob = new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' });
   const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'repday-workout-backup.json'; link.click(); URL.revokeObjectURL(link.href);
@@ -180,4 +190,4 @@ $('#importData').onchange = async (event) => {
 window.addEventListener('repday:data-loaded', (event) => { db = event.detail; localStorage.setItem('repday-v1', JSON.stringify(db)); render(); });
 window.addEventListener('repday:toast', (event) => toast(event.detail));
 if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./service-worker.js').catch(() => {});
-render();
+if (window.RepdayDrive?.ready) window.RepdayDrive.ready.then(render).catch(render); else render();
