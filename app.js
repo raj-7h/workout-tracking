@@ -26,10 +26,15 @@ function dayData(date = selected) {
   if (!db.days[date]) {
     const weekday = nameOfDay(fromISO(date));
     const prescription = db.templates[weekday] || (weekday === 'Monday' ? defaults : []);
-    db.days[date] = { updatedAt: Date.now(), exercises: prescription.map((item) => ({
-      id: crypto.randomUUID(), name: item.name, muscle: item.muscle, videoUrl: item.videoUrl || '', photo: item.photo || '', note: '',
-      sets: Array.from({ length: Math.max(3, Number(item.sets) || 3) }, () => ({ reps: Number(item.reps) || 8, weight: Number(item.weight) || 0, done: false })),
-    })) };
+    db.days[date] = { updatedAt: Date.now(), exercises: prescription.map((item) => {
+      const lastEntry = historyFor(item.name).filter((entry) => entry.date < date).at(-1);
+      return {
+        id: crypto.randomUUID(), name: item.name, muscle: item.muscle,
+        videoUrl: item.videoUrl || lastEntry?.exercise.videoUrl || '',
+        photo: item.photo || lastEntry?.exercise.photo || '', note: '',
+        sets: Array.from({ length: Math.max(3, Number(item.sets) || 3) }, () => ({ reps: '', weight: '', done: false })),
+      };
+    }) };
     save();
   }
   return db.days[date];
@@ -75,8 +80,8 @@ function historyFor(name) {
 function safeVideo(url) { try { const parsed = new URL(url); return ['https:', 'http:'].includes(parsed.protocol) ? parsed.href : ''; } catch { return ''; } }
 function render() {
   drawWeek(); const date = fromISO(selected), data = dayData();
-  $('#greeting').textContent = selected === today ? 'Your workout log' : `${nameOfDay(date)} workout`;
-  $('#workoutTitle').textContent = `${nameOfDay(date)} workout`;
+  $('#greeting').textContent = selected === today ? 'Your training log' : nameOfDay(date);
+  $('#workoutTitle').textContent = nameOfDay(date);
   $('#workoutSub').textContent = date.toLocaleDateString('en', { month: 'long', day: 'numeric', year: 'numeric' });
   $('#formDay').textContent = nameOfDay(date);
   $('#completeDay').textContent = data.completedAt ? 'Completed · sync again' : 'Complete this day';
@@ -91,12 +96,15 @@ function render() {
     const card = document.createElement('article'); card.className = 'exercise';
     card.innerHTML = `<div class="exercise-head"><span class="exercise-num">${String(index + 1).padStart(2, '0')}</span><div class="ex-info"><div class="ex-title"><b class="ex-name"></b><span class="photo-empty">＋</span><img class="photo-round" alt="Exercise reference" hidden></div><div class="ex-muscle"></div></div><span class="last-line"></span><span class="badge">${score > record && score > 0 ? '↑ NEW BEST' : `${score} PTS`}</span><button type="button" class="dots" aria-label="Collapse sets">···</button></div>
       <div class="sets-wrap"><div class="set-head"><span>SET</span><span>REPS</span><span>WEIGHT</span><span>DONE</span><span></span></div><div class="set-list"></div></div>
-      <div class="exercise-foot"><button type="button" class="text-action add-set">＋ Add set</button><input class="note-input" maxlength="120" placeholder="One-line note for this exercise…"><label class="photo-pick">＋ Photo<input class="photo-input" type="file" accept="image/*"></label><button type="button" class="text-action remove-ex">Remove</button><div class="video-line"><input class="video-input" type="url" placeholder="Video or how-to link…"><a class="video-link" target="_blank" rel="noopener noreferrer" hidden>Watch guide ↗</a></div></div>`;
+      <div class="exercise-foot"><button type="button" class="text-action add-set">＋ Add set</button><input class="note-input" maxlength="120" placeholder="One-line note for this exercise…"><small class="previous-note" hidden></small><label class="photo-pick"><span class="photo-pick-text">＋ Add photo</span><input class="photo-input" type="file" accept="image/*"></label><button type="button" class="text-action remove-ex">Remove</button><div class="video-line"><input class="video-input" type="url" placeholder="Video or how-to link…"><a class="video-link" target="_blank" rel="noopener noreferrer" hidden>Watch guide ↗</a></div></div>`;
     card.querySelector('.ex-name').textContent = exercise.name; card.querySelector('.ex-muscle').textContent = exercise.muscle;
     const thumb = card.querySelector('.photo-round'), emptyPhoto = card.querySelector('.photo-empty');
     if (exercise.photo) { thumb.src = exercise.photo; thumb.hidden = false; emptyPhoto.hidden = true; }
-    card.querySelector('.last-line').textContent = last ? `LAST ${Math.max(...last.exercise.sets.map((s) => Number(s.weight) || 0))} KG` : 'FIRST SESSION';
+    card.querySelector('.photo-pick-text').textContent = exercise.photo ? 'Change photo' : '＋ Add photo';
+    card.querySelector('.last-line').textContent = last ? `LAST ${fromISO(last.date).toLocaleDateString('en', { month: 'short', day: 'numeric' })} · ${Math.max(...last.exercise.sets.map((s) => Number(s.weight) || 0))} KG` : 'FIRST SESSION';
     const note = card.querySelector('.note-input'); note.value = exercise.note || ''; note.oninput = () => { exercise.note = note.value; save(); };
+    const previousNote = card.querySelector('.previous-note');
+    if (last?.exercise.note) { previousNote.hidden = false; previousNote.textContent = `PREVIOUS NOTE · ${fromISO(last.date).toLocaleDateString('en', { month: 'short', day: 'numeric' })}: ${last.exercise.note}`; }
     const videoInput = card.querySelector('.video-input'), videoLink = card.querySelector('.video-link'); videoInput.value = exercise.videoUrl || '';
     const updateVideoLink = () => { const href = safeVideo(videoInput.value.trim()); videoLink.hidden = !href; if (href) videoLink.href = href; };
     videoInput.oninput = () => { exercise.videoUrl = videoInput.value.trim(); syncTemplate(); save(); updateVideoLink(); }; updateVideoLink();
@@ -104,15 +112,20 @@ function render() {
     const rows = card.querySelector('.set-list');
     exercise.sets.forEach((set, setIndex) => {
       const row = document.createElement('div'); row.className = `set-row${set.done ? ' completed' : ''}`;
-      row.innerHTML = `<span class="set-number">SET ${String(setIndex + 1).padStart(2, '0')}</span><label class="numeric"><input type="number" min="0" step="1" aria-label="Set ${setIndex + 1} reps"><i class="unit">reps</i></label><label class="numeric"><input type="number" min="0" step="0.5" aria-label="Set ${setIndex + 1} weight"><i class="unit">kg</i></label><label class="done-cell" aria-label="Mark set ${setIndex + 1} complete"><input type="checkbox" ${set.done ? 'checked' : ''}><span></span></label><button type="button" class="remove-set" aria-label="Remove set">×</button>`;
+      const previousSet = last?.exercise.sets?.[setIndex];
+      const removeSet = setIndex >= 3 ? '<button type="button" class="remove-set" aria-label="Remove set">×</button>' : '<span class="remove-set-placeholder" aria-hidden="true"></span>';
+      row.innerHTML = `<span class="set-number">SET ${String(setIndex + 1).padStart(2, '0')}<small class="previous-set"></small></span><label class="numeric"><input type="number" min="0" step="1" aria-label="Set ${setIndex + 1} reps"><i class="unit">reps</i></label><label class="numeric"><input type="number" min="0" step="0.5" aria-label="Set ${setIndex + 1} weight"><i class="unit">kg</i></label><label class="done-cell" aria-label="Mark set ${setIndex + 1} complete"><input type="checkbox" ${set.done ? 'checked' : ''}><span></span></label>${removeSet}`;
       const numbers = row.querySelectorAll('input[type=number]'); numbers[0].value = set.reps; numbers[1].value = set.weight;
+      numbers[0].placeholder = previousSet?.reps ?? '';
+      numbers[1].placeholder = previousSet?.weight ?? '';
+      row.querySelector('.previous-set').textContent = previousSet ? `PREV ${previousSet.reps || '—'} × ${previousSet.weight || '—'} kg` : '';
       numbers[0].oninput = () => { set.reps = numbers[0].value; syncTemplate(); save(); };
       numbers[1].oninput = () => { set.weight = numbers[1].value; syncTemplate(); save(); drawChart(); };
       row.querySelector('input[type=checkbox]').onchange = (event) => { set.done = event.target.checked; row.classList.toggle('completed', set.done); save(); };
-      row.querySelector('.remove-set').onclick = () => { if (exercise.sets.length <= 3) return toast('Keep at least 3 sets'); exercise.sets.splice(setIndex, 1); syncTemplate(); save(); render(); };
+      row.querySelector('.remove-set')?.addEventListener('click', () => { exercise.sets.splice(setIndex, 1); syncTemplate(); save(); render(); });
       rows.append(row);
     });
-    card.querySelector('.add-set').onclick = () => { const lastSet = exercise.sets.at(-1); exercise.sets.push({ reps: lastSet?.reps || 8, weight: lastSet?.weight || 0, done: false }); syncTemplate(); save(); render(); };
+    card.querySelector('.add-set').onclick = () => { exercise.sets.push({ reps: '', weight: '', done: false }); syncTemplate(); save(); render(); };
     card.querySelector('.remove-ex').onclick = () => { if (!confirm(`Remove ${exercise.name} from this day?`)) return; data.exercises.splice(index, 1); syncTemplate(); save(); render(); };
     card.querySelector('.dots').onclick = () => { card.querySelector('.sets-wrap').hidden = !card.querySelector('.sets-wrap').hidden; };
     list.append(card);
@@ -160,8 +173,11 @@ $('#completeDay').onclick = async () => {
 $('#exerciseForm').onsubmit = async (event) => {
   event.preventDefault(); const name = $('#nameInput').value.trim(); if (!name) return;
   let photo = ''; try { if ($('#photoInput').files[0]) photo = await imageData($('#photoInput').files[0]); } catch { return toast('Choose a valid image'); }
+  const previous = historyFor(name).filter((entry) => entry.date < selected).at(-1);
+  const videoUrl = $('#videoInput').value.trim() || previous?.exercise.videoUrl || '';
+  photo ||= previous?.exercise.photo || '';
   const count = Math.max(3, Math.min(20, Number($('#setsInput').value) || 3)), reps = Math.max(1, Number($('#repsInput').value) || 8), weight = Math.max(0, Number($('#weightInput').value) || 0);
-  dayData().exercises.push({ id: crypto.randomUUID(), name, muscle: $('#muscleInput').value, videoUrl: $('#videoInput').value.trim(), photo, note: '', sets: Array.from({ length: count }, () => ({ reps, weight, done: false })) });
+  dayData().exercises.push({ id: crypto.randomUUID(), name, muscle: $('#muscleInput').value, videoUrl, photo, note: '', sets: Array.from({ length: count }, () => ({ reps, weight, done: false })) });
   syncTemplate(); save(); event.target.reset(); $('#setsInput').value = 3; $('#repsInput').value = 8; $('#weightInput').value = 0; event.target.hidden = true; render(); toast('Exercise added');
 };
 $('#driveConnect').onclick = () => window.RepdayDrive?.connect();

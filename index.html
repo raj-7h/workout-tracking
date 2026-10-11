@@ -3,17 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#f5f6f0">
+<meta name="theme-color" content="#25291f">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Setwise">
+<link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
 <link rel="manifest" href="manifest.webmanifest">
-<title>Repday — workout log</title>
+<title>Setwise — workout log</title>
 <link rel="stylesheet" href="styles.css">
 <script defer src="drive-sync.js"></script>
 <script defer src="app.js"></script>
 </head>
 <body>
 <div class="app-shell">
-  <header class="topbar"><a class="brand" href="#"><span class="brand-mark">↗</span>repday</a><span class="today-chip"><i></i>YOUR TRAINING JOURNAL</span></header>
+  <header class="topbar"><a class="brand" href="#"><img class="brand-mark" src="icon.svg" alt="">Setwise</a><span class="today-chip"><i></i>YOUR TRAINING JOURNAL</span></header>
   <main>
     <section class="intro"><div><div class="overline">YOUR TRAINING JOURNAL</div><h1 id="greeting">Your workout log</h1><p>Build a routine, track every set, and keep getting stronger.</p></div></section>
     <section class="drive-card" id="driveCard" aria-label="Google Drive sync"><div class="drive-copy"><b>Google Drive sync</b><small id="driveStatus">Sign in once on this device. Drive changes upload when you complete a day.</small></div><div class="drive-controls"><button class="btn" id="driveConnect">Enable Drive sync</button><button class="btn subtle" id="exportData">Export backup</button><label class="btn subtle import-label">Import backup<input id="importData" type="file" accept="application/json,.json"></label></div></section>
