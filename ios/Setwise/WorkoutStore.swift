@@ -42,6 +42,17 @@ final class WorkoutStore: ObservableObject {
     private var currentDayKey: String { Self.dateKey(selectedDate) }
     private var currentExercises: [WorkoutExercise] { exercises(for: currentDayKey) }
 
+    init() {
+        database = Self.localCopy()
+        lastCompleted = Self.latestCompletion(in: database)
+        if let days = database["days"] as? [String: Any], !days.isEmpty {
+            statusMessage = "Showing saved workouts while checking for updates."
+        }
+        WatchConnectivityBridge.shared.onToggleSet = { [weak self] exerciseID, setIndex, done in
+            self?.updateSet(exerciseID: exerciseID, setIndex: setIndex, field: "done", value: done)
+        }
+    }
+
     func load() async {
         guard sessionToken != nil else { statusMessage = "Sign in with Google to sync your workouts."; return }
         isLoading = true
@@ -50,9 +61,12 @@ final class WorkoutStore: ObservableObject {
             let response = try await request("/api/workouts")
             guard let value = try JSONSerialization.jsonObject(with: response) as? [String: Any] else { throw APIError.invalidData }
             database = Self.merge(local: Self.localCopy(), remote: value)
+            persistLocal()
             _ = ensureDay(currentDayKey)
             sessionStartedAt = UserDefaults.standard.object(forKey: sessionStartKey(currentDayKey)) as? Date
+            lastCompleted = Self.latestCompletion(in: database)
             statusMessage = "Workouts loaded and ready to edit."
+            publishToWatch()
         } catch {
             errorMessage = "Couldn’t load workouts: \(error.localizedDescription)"
         }
@@ -66,6 +80,7 @@ final class WorkoutStore: ObservableObject {
         selectedDate = Calendar.current.startOfDay(for: date)
         sessionStartedAt = UserDefaults.standard.object(forKey: sessionStartKey(currentDayKey)) as? Date
         _ = ensureDay(currentDayKey)
+        publishToWatch()
     }
 
     func updateSet(exerciseID: String, setIndex: Int, field: String, value: Any) {
@@ -147,6 +162,7 @@ final class WorkoutStore: ObservableObject {
         sessionStartedAt = Date()
         UserDefaults.standard.set(sessionStartedAt, forKey: sessionStartKey(currentDayKey))
         statusMessage = "Workout timer started."
+        publishToWatch()
     }
 
     func completeDay() async {
@@ -160,11 +176,13 @@ final class WorkoutStore: ObservableObject {
             day["completedAt"] = now.timeIntervalSince1970 * 1000
             day["updatedAt"] = now.timeIntervalSince1970 * 1000
             setDay(currentDayKey, day)
-            let remoteData = try await request("/api/workouts")
-            guard let remote = try JSONSerialization.jsonObject(with: remoteData) as? [String: Any] else { throw APIError.invalidData }
-            database = Self.merge(local: database, remote: remote)
             guard let data = try? JSONSerialization.data(withJSONObject: database) else { throw APIError.invalidData }
-            _ = try await request("/api/workouts", method: "PUT", body: data)
+            let savedData = try await request("/api/workouts", method: "PUT", body: data)
+            if let response = try? JSONSerialization.jsonObject(with: savedData) as? [String: Any],
+               let savedDatabase = response["data"] as? [String: Any] {
+                database = savedDatabase
+                persistLocal()
+            }
             statusMessage = "Saved to your account."
             lastCompleted = now
             do { try await HealthSync.save(exercises: currentExercises, start: start, end: now, dayKey: currentDayKey) }
@@ -180,22 +198,27 @@ final class WorkoutStore: ObservableObject {
 
     func previousSets(for exerciseID: String) -> [WorkoutSet] {
         guard let days = database["days"] as? [String: [String: Any]] else { return [] }
-        let prior = days.keys.filter { $0 < currentDayKey }.sorted().last
-        guard let prior, let exercises = days[prior]?["exercises"] as? [[String: Any]],
-              let exercise = exercises.first(where: { ($0["name"] as? String)?.caseInsensitiveCompare(name(for: exerciseID)) == .orderedSame }) else { return [] }
-        return Self.sets(from: exercise)
+        let exerciseName = name(for: exerciseID)
+        for date in days.keys.filter({ $0 < currentDayKey }).sorted(by: >) {
+            guard let exercises = days[date]?["exercises"] as? [[String: Any]],
+                  let previous = exercises.first(where: { ($0["name"] as? String)?.caseInsensitiveCompare(exerciseName) == .orderedSame }) else { continue }
+            return Self.sets(from: previous)
+        }
+        return []
     }
 
     func exercisesForUI() -> [WorkoutExercise] { currentExercises }
     func note(for id: String) -> String { currentExercises.first(where: { $0.id == id })?.note ?? "" }
     func previousNote(for exerciseID: String) -> String? {
         guard let name = currentExercises.first(where: { $0.id == exerciseID })?.name,
-              let days = database["days"] as? [String: [String: Any]],
-              let key = days.keys.filter({ $0 < currentDayKey }).sorted().last,
-              let rows = days[key]?["exercises"] as? [[String: Any]],
-              let prior = rows.first(where: { ($0["name"] as? String)?.caseInsensitiveCompare(name) == .orderedSame }),
-              let note = prior["note"] as? String, !note.isEmpty else { return nil }
-        return note
+              let days = database["days"] as? [String: [String: Any]] else { return nil }
+        for date in days.keys.filter({ $0 < currentDayKey }).sorted(by: >) {
+            guard let rows = days[date]?["exercises"] as? [[String: Any]],
+                  let prior = rows.first(where: { ($0["name"] as? String)?.caseInsensitiveCompare(name) == .orderedSame }),
+                  let note = prior["note"] as? String, !note.isEmpty else { continue }
+            return note
+        }
+        return nil
     }
     func dateTitle() -> String { selectedDate.formatted(.dateTime.weekday(.wide).month(.wide).day()) }
     func bestScore(_ exerciseID: String) -> Double {
@@ -233,6 +256,11 @@ final class WorkoutStore: ObservableObject {
         let parts = calendar.dateComponents([.year, .month, .day], from: date)
         return String(format: "%04d-%02d-%02d", parts.year ?? 2000, parts.month ?? 1, parts.day ?? 1)
     }
+    private static func latestCompletion(in database: [String: Any]) -> Date? {
+        let days = database["days"] as? [String: [String: Any]] ?? [:]
+        let latestMilliseconds = days.values.compactMap { $0["completedAt"] as? Double }.max()
+        return latestMilliseconds.map { Date(timeIntervalSince1970: $0 / 1000) }
+    }
     private static func parseDate(_ key: String) -> Date? {
         let parts = key.split(separator: "-").compactMap { Int($0) }
         guard parts.count == 3 else { return nil }
@@ -266,6 +294,10 @@ final class WorkoutStore: ObservableObject {
         days[key] = day; database["days"] = days
         persistLocal()
         objectWillChange.send()
+        if key == currentDayKey { publishToWatch() }
+    }
+    private func publishToWatch() {
+        WatchConnectivityBridge.shared.publish(day: dateTitle(), startedAt: sessionStartedAt, exercises: currentExercises)
     }
     private func updateTemplate(_ key: String) {
         guard let day = dayObject(key), let exercises = day["exercises"] as? [[String: Any]] else { return }

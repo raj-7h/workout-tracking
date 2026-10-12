@@ -13,8 +13,14 @@ struct ContentView: View {
                 if store.hasSession() { workoutScreen }
                 else { signInScreen }
             }
-            .navigationTitle("Setwise")
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Label("Setwise", systemImage: "dumbbell.fill")
+                        .font(.headline)
+                        .labelStyle(.titleAndIcon)
+                }
                 if store.hasSession() {
                     ToolbarItem(placement: .topBarTrailing) {
                         Menu {
@@ -56,7 +62,24 @@ struct ContentView: View {
     private var workoutScreen: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                if let last = store.lastCompleted {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                        Text("Last completed").font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                        Spacer(minLength: 4)
+                        Text(last.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
+                            .font(.caption.weight(.semibold).monospacedDigit())
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
+                    .background(.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                }
                 daySelector
+                if let start = store.sessionStartedAt {
+                    workoutTimer(startedAt: start)
+                }
                 HStack(spacing: 8) {
                     Circle().fill(store.isSaving ? .orange : .green).frame(width: 7, height: 7)
                     Text(store.statusMessage).font(.footnote).foregroundStyle(.secondary)
@@ -73,21 +96,52 @@ struct ContentView: View {
 
                 HStack(spacing: 10) {
                     Button { store.beginWorkout() } label: {
-                        Label(store.sessionStartedAt == nil ? "Start workout" : "Timer running", systemImage: "timer")
-                            .frame(maxWidth: .infinity).padding(.vertical, 9)
+                        Label("Start workout", systemImage: "timer")
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1).minimumScaleFactor(0.8)
+                            .frame(maxWidth: .infinity, minHeight: 46)
                     }.buttonStyle(.bordered).disabled(store.sessionStartedAt != nil)
                     Button { Task { await store.completeDay() } } label: {
                         Label(store.isSaving ? "Saving…" : "Complete this day", systemImage: "checkmark.circle.fill")
-                            .frame(maxWidth: .infinity).padding(.vertical, 9)
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1).minimumScaleFactor(0.72)
+                            .frame(maxWidth: .infinity, minHeight: 46)
                     }.buttonStyle(.borderedProminent).disabled(store.isSaving || exercises.isEmpty)
                 }
                 Text("Completion syncs your workout to your account and asks permission to save a strength workout in Apple Health.")
                     .font(.caption).foregroundStyle(.secondary)
-                    if let last = store.lastCompleted { Text("Last completed · \(last.formatted(date: .omitted, time: .shortened))").font(.caption).foregroundStyle(.secondary) }
             }
             .padding()
         }
         .background(Color(uiColor: .systemGroupedBackground))
+    }
+
+    private func workoutTimer(startedAt: Date) -> some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let elapsed = max(0, Int(context.date.timeIntervalSince(startedAt)))
+            let hours = elapsed / 3600
+            let minutes = (elapsed % 3600) / 60
+            let seconds = elapsed % 60
+            HStack(spacing: 12) {
+                Image(systemName: "timer")
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(.green)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("WORKOUT IN PROGRESS")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                    Text(hours > 0 ? String(format: "%d:%02d:%02d", hours, minutes, seconds) : String(format: "%02d:%02d", minutes, seconds))
+                        .font(.system(.title2, design: .rounded).monospacedDigit().weight(.bold))
+                }
+                Spacer()
+                Text("Started")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.green.opacity(0.10), in: RoundedRectangle(cornerRadius: 16))
+        }
     }
 
     private var daySelector: some View {
@@ -131,8 +185,14 @@ private struct ExerciseCard: View {
                     Link(destination: url) { Image(systemName: "play.rectangle").font(.title3) }
                 }
             }
-            HStack { Text("SET"); Spacer(); Text("REPS"); Spacer(); Text("KG"); Spacer(); Text("DONE") }
-                .font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+            HStack(spacing: 9) {
+                Text("SET").frame(width: 30)
+                Text("REPS").frame(maxWidth: .infinity)
+                Text("KG").frame(maxWidth: .infinity)
+                Text("DONE").frame(width: 40)
+                Color.clear.frame(width: 20)
+            }
+            .font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
             ForEach(exercise.sets) { set in
                 HStack(spacing: 9) {
                     Text("\(set.id + 1)").font(.caption.monospacedDigit()).foregroundStyle(.secondary).frame(width: 30)
