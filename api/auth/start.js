@@ -6,7 +6,8 @@ const { getRefreshToken } = require('../_lib/store');
 
 module.exports = async function handler(req, res) {
   try {
-    const state = crypto.randomBytes(24).toString('base64url');
+    const isNative = req.query.native === '1';
+    const state = `${isNative ? 'native.' : ''}${crypto.randomBytes(24).toString('base64url')}`;
     let hasRefreshToken = false;
     try { hasRefreshToken = !!(await getRefreshToken()); } catch {}
     const params = new URLSearchParams({ client_id: env('GOOGLE_CLIENT_ID'), redirect_uri: redirectUri(), response_type: 'code', scope: 'openid email https://www.googleapis.com/auth/drive.file', access_type: 'offline', include_granted_scopes: 'true', prompt: hasRefreshToken ? 'select_account' : 'consent', state });

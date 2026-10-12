@@ -80,10 +80,23 @@ After pushing changes, wait for the Vercel Production deployment to finish. Open
 - `index.html`, `styles.css`, `app.js` — responsive workout app and local cache
 - `drive-sync.js` — auto-sync client, session check, and local/Drive merge
 - `api/` — Vercel OAuth callback, remembered session, encrypted token storage, and Drive proxy
+- `ios/Setwise/` — SwiftUI iPhone app, Google sign-in handoff, Keychain session, workout sync, and HealthKit export
 - `supabase-setup.sql` — private one-row token table
 - `manifest.webmanifest`, `service-worker.js` — installable offline app shell
 - `icon.svg`, `icon-180.png`, `icon-512.png` — clear barbell app icons for browser and iPhone Home Screen
 
 ## Apple Health
 
-The Vercel-hosted web app cannot directly access Apple Health. HealthKit is an iOS app framework and requires a native iOS app with Apple's HealthKit capability and user permission. A later native iOS companion could export workout summaries; the current website remains the detailed source for sets and reps. See [Apple HealthKit](https://developer.apple.com/documentation/healthkit) and [HealthKit setup](https://developer.apple.com/documentation/healthkit/setting-up-healthkit).
+The web app cannot directly access Apple Health. A native iOS companion is now in [`ios/Setwise`](./ios/Setwise). It uses the same workout API and Google account, keeps an offline draft on the iPhone until **Complete this day**, then saves the workout to Google Drive and writes a Traditional Strength Training workout to Apple Health. Use **Start workout** for a meaningful duration. Setwise keeps detailed exercises, reps, weights, notes, photos, links, records, and charts; Health stores a workout summary with Setwise metadata. No calories or heart-rate values are invented.
+
+### Build the iPhone app
+
+1. Push this repository to GitHub and wait for the Vercel Production deployment. The native sign-in handoff adds `POST /api/auth/native-session`; the iPhone app needs that route deployed before Google sign-in can finish.
+2. Open [`ios/Setwise/Setwise.xcodeproj`](./ios/Setwise/Setwise.xcodeproj) in Xcode.
+3. In **Signing & Capabilities**, select your Apple Account’s team and check that Xcode accepts the HealthKit capability. Connect your iPhone to the Mac, select it as the run destination, and press **Run**.
+4. In Setwise, choose **Continue with Google** and sign in with the Google account already connected to Drive. The iOS app stores its app session in the iPhone Keychain.
+5. Tap **Start workout** when training begins. After **Complete this day**, Setwise uploads your merged workout history and requests permission to add the workout to Apple Health. You can manage that permission later in iPhone Settings or Health.
+
+Apple allows building and testing on personal devices with Xcode without program membership, but HealthKit capability availability depends on the Apple team/signing profile. Apple lists HealthKit as a developer capability and says the paid Apple Developer Program costs USD $99 per year. Check the HealthKit capability in Xcode before paying; no membership or purchase is included here. If your free Personal Team cannot sign the HealthKit entitlement, the no-cost option remains the existing Add-to-Home-Screen web app without Health sync. See [Apple’s capability availability](https://developer.apple.com/help/account/reference/supported-capabilities-ios), [membership details and pricing](https://developer.apple.com/programs/whats-included/), and [HealthKit setup](https://developer.apple.com/documentation/healthkit/setting-up-healthkit).
+
+The simulator can compile this app, but HealthKit data sync must be tried on a real iPhone. The Health app does not provide a standard per-set lifting log, so detailed tracking remains in Setwise.
